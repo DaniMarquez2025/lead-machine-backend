@@ -6,23 +6,33 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 🔥 Firebase config
-const serviceAccount = JSON.parse(process.env.FIREBASE_KEY)
+// 🔐 Firebase desde variable de entorno
+let db;
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+try {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 
-const db = admin.firestore();
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+
+  db = admin.firestore();
+
+  console.log("✅ Firebase conectado");
+} catch (error) {
+  console.log("⚠️ Firebase no configurado:", error.message);
+}
 
 // 👉 GET leads
 app.get("/leads", async (req, res) => {
   try {
     const snapshot = await db.collection("leads").get();
+
     const leads = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
+
     res.json(leads);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -33,12 +43,23 @@ app.get("/leads", async (req, res) => {
 app.post("/leads", async (req, res) => {
   try {
     const data = req.body;
+
     const docRef = await db.collection("leads").add(data);
+
     res.json({ id: docRef.id });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// 👉 RUTA RAÍZ (SOLUCIONA TU ERROR)
+app.get("/", (req, res) => {
+  res.send("API funcionando 🚀");
+});
+
+// 🚀 Servidor
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Servidor corriendo en puerto", PORT));
+
+app.listen(PORT, () => {
+  console.log(`Servidor corriendo en puerto ${PORT}`);
+});
