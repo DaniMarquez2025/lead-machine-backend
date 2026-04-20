@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Lead Machine PRO</title>
+
+<style>
+body{
+  font-family:sans-serif;
+  background:#f5f5f5;
+  text-align:center;
+}
+.container{ padding:60px; }
+input{
+  padding:12px;
+  margin:8px;
+  width:260px;
+  border-radius:12px;
+  border:1px solid #ddd;
+}
+button{
+  padding:10px 20px;
+  background:black;
+  color:white;
+  border:none;
+  border-radius:10px;
+  cursor:pointer;
+  margin:5px;
+}
+.card{
+  background:white;
+  padding:15px;
+  margin:10px auto;
+  max-width:500px;
+  border-radius:12px;
+}
+.hidden{display:none;}
+</style>
+
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login" class="container">
+  <h1>Lead Machine 🚀</h1>
+  <input id="loginUser" placeholder="Email"><br>
+  <input id="loginPass" type="password" placeholder="Contraseña"><br>
+  <button onclick="login()">Entrar</button>
+</div>
+
+<!-- ADMIN -->
+<div id="admin" class="container hidden">
+  <h2>Admin 👑</h2>
+
+  <input id="newUser" placeholder="Email"><br>
+  <input id="newPass" placeholder="Contraseña"><br>
+
+  <select id="plan">
+    <option value="free">FREE</option>
+    <option value="pro">PRO</option>
+  </select><br>
+
+  <button onclick="createUser()">Crear usuario</button>
+
+  <h3>Usuarios</h3>
+  <div id="userList"></div>
+
+  <br>
+  <button onclick="logout()">Cerrar sesión</button>
+</div>
+
+<!-- APP -->
+<div id="app" class="container hidden">
+  <h2>Buscar Leads 🔥</h2>
+
+  <!-- 🔥 BOTÓN STRIPE -->
+  <button onclick="upgrade()">🔥 Pasar a PRO</button>
+
+  <br><br>
+
+  <input id="query" placeholder="Ej: dentistas Madrid"><br>
+  <button onclick="buscar()">Buscar</button>
+
+  <div id="results"></div>
+
+  <h2>📊 Leads guardados</h2>
+
+  <div id="leadsDB"></div>
+
+  <br>
+  <button onclick="logout()">Cerrar sesión</button>
+</div>
+
+<script>
+
+// 🔥 CONFIG
+const ADMIN_EMAIL = "admin@admin.com";
+const ADMIN_PASS = "123456";
+const APIFY_TOKEN = "TU_TOKEN_APIFY"; // pon tu token aquí
+
+let currentUser = null;
+
+// 🔥 USERS LOCAL
+function getUsers(){
+  return JSON.parse(localStorage.getItem("users") || "[]");
+}
+function saveUsers(users){
+  localStorage.setItem("users", JSON.stringify(users));
+}
+
+// 🔥 LOGIN
+function login(){
+  const email = loginUser.value;
+  const pass = loginPass.value;
+
+  if(email === ADMIN_EMAIL && pass === ADMIN_PASS){
+    showAdmin();
+    return;
+  }
+
+  const users = getUsers();
+  const found = users.find(x => x.email === email && x.pass === pass);
+
+  if(found){
+    currentUser = found;
+    showApp();
+    cargarLeads();
+  } else {
+    alert("Credenciales incorrectas");
+  }
+}
+
+// UI
+function showAdmin(){
+  loginDiv().classList.add("hidden");
+  adminDiv().classList.remove("hidden");
+  renderUsers();
+}
+function showApp(){
+  loginDiv().classList.add("hidden");
+  appDiv().classList.remove("hidden");
+}
+function logout(){
+  location.reload();
+}
+
+function loginDiv(){ return document.getElementById("login"); }
+function adminDiv(){ return document.getElementById("admin"); }
+function appDiv(){ return document.getElementById("app"); }
+
+// 🔥 USERS
+function createUser(){
+  let users = getUsers();
+
+  users.push({
+    email:newUser.value,
+    pass:newPass.value,
+    plan:plan.value
+  });
+
+  saveUsers(users);
+
+  newUser.value="";
+  newPass.value="";
+  renderUsers();
+}
+
+function renderUsers(){
+  userList.innerHTML = getUsers().map(u=>
+    `<div class="card">${u.email} (${u.plan})</div>`
+  ).join("");
+}
+
+// 🔥 LEADS
+function getLeads(){
+  return JSON.parse(localStorage.getItem("leads_"+currentUser.email) || "[]");
+}
+function saveLeads(leads){
+  localStorage.setItem("leads_"+currentUser.email, JSON.stringify(leads));
+}
+
+// 🔥 STRIPE
+function upgrade(){
+  window.open("https://buy.stripe.com/3cIfZh3Xk9If9Vg5ZY6Na00", "_blank");
+}
+
+// 🔥 BUSCAR
+async function buscar(){
+
+  const queryText = query.value;
+  results.innerHTML = "Buscando...";
+
+  let leads = getLeads();
+
+  // 🔒 LIMITADOR FREE
+  if(currentUser.plan === "free" && leads.length >= 10){
+    alert("Has llegado al límite de 10 leads en plan FREE 🚫");
+    return;
+  }
+
+  try{
+    const res = await fetch(`https://api.apify.com/v2/acts/compass~crawler-google-places/run-sync-get-dataset-items?token=${APIFY_TOKEN}`, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        searchStringsArray:[queryText],
+        maxCrawledPlacesPerSearch:20
+      })
+    });
+
+    const data = await res.json();
+
+    data.forEach(p=>{
+      if(currentUser.plan === "free" && leads.length >= 10) return;
+
+      leads.push({
+        nombre:p.title,
+        telefono:p.phone || "",
+        direccion:p.address || ""
+      });
+    });
+
+    saveLeads(leads);
+    cargarLeads();
+
+    results.innerHTML = data.map(p=>`
+      <div class="card">
+        <b>${p.title}</b><br>
+        📞 ${p.phone || ""}<br>
+        📍 ${p.address || ""}
+      </div>`).join("");
+
+  }catch(e){
+    results.innerHTML = "Error";
+  }
+}
+
+// 🔥 MOSTRAR
+function cargarLeads(){
+  let leads = getLeads();
+
+  leadsDB.innerHTML = leads.map(l=>`
+    <div class="card">
+      <b>${l.nombre}</b><br>
+      📞 ${l.telefono}<br>
+      📍 ${l.direccion}
+    </div>
+  `).join("");
+}
+
+</script>
+
+</body>
+</html>
