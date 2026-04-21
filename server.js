@@ -9,8 +9,11 @@ app.use(express.json());
 const stripe = new Stripe("TU_STRIPE_SECRET");
 
 // 👉 FIREBASE (luego metemos la clave)
-import serviceAccount from "./serviceAccountKey.json" assert { type: "json" };
+import fs from "fs";
 
+const serviceAccount = JSON.parse(
+  fs.readFileSync("./serviceAccountKey.json", "utf-8")
+);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
