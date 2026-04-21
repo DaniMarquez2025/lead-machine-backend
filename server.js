@@ -1,50 +1,50 @@
 import express from "express";
 import Stripe from "stripe";
-import admin from "firebase-admin";
 
 const app = express();
 app.use(express.json());
 
-// 👉 AQUÍ LUEGO VA TU CLAVE
-const stripe = new Stripe("TU_STRIPE_SECRET");
+// ✅ Usa la variable de entorno de Render
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// 👉 FIREBASE (luego metemos la clave)
-import fs from "fs";
-
-const serviceAccount = JSON.parse(
-  fs.readFileSync("./serviceAccountKey.json", "utf-8")
-);
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
-
-const db = admin.firestore();
-
-// 👉 AQUÍ ESCUCHAMOS A STRIPE
-app.post("/webhook", async (req, res) => {
-  const event = req.body;
-
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-
-    const email = session.customer_details.email;
-
-    const snapshot = await db.collection("users")
-      .where("email", "==", email)
-      .get();
-
-    snapshot.forEach(async (docu) => {
-      await db.collection("users").doc(docu.id).update({
-        paid: true
-      });
+// 👉 Crear sesión de pago
+app.post("/create-checkout-session", async (req, res) => {
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "payment",
+      line_items: [
+        {
+          price_data: {
+            currency: "eur",
+            product_data: {
+              name: "Lead Machine",
+            },
+            unit_amount: 5000, // 50€
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: "https://tudominio.com/success",
+      cancel_url: "https://tudominio.com/cancel",
     });
+
+    res.json({ url: session.url });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error creando el pago" });
   }
-
-  res.sendStatus(200);
 });
 
+// 👉 Ruta test
 app.get("/", (req, res) => {
-  res.send("Servidor funcionando");
+  res.send("Servidor funcionando 🚀");
 });
 
-app.listen(3000, () => console.log("Server running"));
+// 👉 IMPORTANTE para Render
+const PORT = process.env.PORT || 10000;
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
