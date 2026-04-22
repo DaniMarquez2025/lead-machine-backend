@@ -1,7 +1,6 @@
 import express from "express";
 import Stripe from "stripe";
 import admin from "firebase-admin";
-import fs from "fs";
 
 const app = express();
 app.use(express.json());
@@ -29,16 +28,21 @@ app.get("/test-payment", async (req, res) => {
       .where("email", "==", email)
       .get();
 
-    snapshot.forEach(async (docu) => {
+    if (snapshot.empty) {
+      return res.send("❌ Usuario no encontrado");
+    }
+
+    for (const docu of snapshot.docs) {
       await db.collection("users").doc(docu.id).update({
         paid: true
       });
-    });
+    }
 
     res.send("✅ Usuario actualizado a paid");
+
   } catch (error) {
     console.error(error);
-    res.status(500).send("Error");
+    res.status(500).send("❌ Error");
   }
 });
 
@@ -55,7 +59,7 @@ app.post("/webhook", async (req, res) => {
       const email = session.customer_details?.email;
 
       if (!email) {
-        console.log("❌ No email");
+        console.log("❌ No email en sesión");
         return res.sendStatus(200);
       }
 
@@ -63,18 +67,24 @@ app.post("/webhook", async (req, res) => {
         .where("email", "==", email)
         .get();
 
-      snapshot.forEach(async (docu) => {
+      if (snapshot.empty) {
+        console.log("❌ Usuario no encontrado:", email);
+        return res.sendStatus(200);
+      }
+
+      for (const docu of snapshot.docs) {
         await db.collection("users").doc(docu.id).update({
           paid: true
         });
-      });
+      }
 
       console.log("✅ Usuario actualizado:", email);
     }
 
     res.sendStatus(200);
+
   } catch (error) {
-    console.error("Webhook error:", error);
+    console.error("❌ Webhook error:", error);
     res.sendStatus(500);
   }
 });
